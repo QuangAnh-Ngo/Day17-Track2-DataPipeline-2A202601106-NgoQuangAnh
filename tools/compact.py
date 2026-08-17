@@ -60,30 +60,36 @@ DST = DATA / "gold_events_v2"
 def main() -> int:
     con = duckdb.connect()
 
-    n_src = len(list(SRC.glob("*.parquet")))
-    print(f"  nguồn : {SRC}  ({n_src:,} file)")
+    src_str = str(SRC).replace("\\", "/")
+    dst_str = str(DST).replace("\\", "/")
 
-    # TODO(nhiệm vụ 4): hiện thực khung COPY ... TO ... ở phần docstring.
-    #
-    #   con.execute(f"""
-    #       copy (
-    #           select * from read_parquet('{SRC}/*.parquet')
-    #           order by ...
-    #       ) to '{DST}' (
-    #           format parquet,
-    #           partition_by (...),
-    #           overwrite_or_ignore,
-    #           row_group_size ...
-    #       )
-    #   """)
-    #
-    # Sau đó kiểm tra không mất hàng nào:
-    #
-    #   assert <số row dataset cũ> == <số row dataset mới>
+    src_rows = con.execute(
+        f"select count(*) from read_parquet('{src_str}/*.parquet')"
+    ).fetchone()[0]
 
-    print("\n  tools/compact.py chưa được hiện thực — đây là nhiệm vụ 4.")
-    print("  Mở file này, đọc phần KHUNG THỰC HIỆN ở đầu file và điền vào TODO.")
-    print("  Hướng dẫn từng bước: GUIDE.md mục 4.\n")
+    con.execute(f"""
+        copy (
+            select
+                *,
+                event_time::date as event_date
+            from read_parquet('{src_str}/*.parquet')
+            order by customer_name, event_time
+        ) to '{dst_str}' (
+            format parquet,
+            partition_by (event_date),
+            overwrite_or_ignore,
+            row_group_size 100000
+        )
+    """)
+
+    dst_rows = con.execute(
+        f"select count(*) from read_parquet('{dst_str}/*/*.parquet')"
+    ).fetchone()[0]
+
+    print(f"  đích  : {DST}")
+    print(f"  kiểm tra số hàng: src={src_rows:,}, dst={dst_rows:,}")
+    assert src_rows == dst_rows, f"Số hàng không khớp! src={src_rows}, dst={dst_rows}"
+    print("  ✓ Đã nén và partition thành công!")
     return 0
 
 
